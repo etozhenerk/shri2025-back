@@ -1,0 +1,14 @@
+{
+  "name": "node_shri_homework",
+  "type": "module",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "generate-csv": "node cli/generateInput/index.js",
+    "send-request": "node cli/sendRequest/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
