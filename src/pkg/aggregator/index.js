@@ -1,4 +1,5 @@
 import { TransformStream } from "node:stream/web";
+import { setTimeout } from "node:timers/promises";
 
 const NEW_LINE_CHAR_CODE = 10; // "\n"
 const COMMA_DELIMITER_CODE = 44; // ","
@@ -51,7 +52,22 @@ const hashBuffer = (buffer, start, end) => {
     return hash >>> 0; // Приводим к беззнаковому 32-битному целому
 };
 
-export const makeLineSplitter = () => {
+const exchangeRate = new Map();
+exchangeRate.set(hashBuffer(HUMAN_KEY, 0, HUMAN_KEY.length), 0.5);
+exchangeRate.set(hashBuffer(BLOBS_KEY, 0, BLOBS_KEY.length), 1);
+exchangeRate.set(hashBuffer(MONSTERS_KEY, 0, MONSTERS_KEY.length), 1.5);
+
+const getExchangeRate = (civilizationHash) => {
+    return exchangeRate.get(civilizationHash);
+};
+
+/**
+ * @param {Object} params
+ * @param {number} params.rows
+ * @returns {TransformStream}
+ */
+export const aggregate = (params) => {
+    const { rows } = params;
     // Выделяем буфер один раз с запасом
     const buffer = Buffer.alloc(256000);
     let bufferOffset = 0;
@@ -223,6 +239,8 @@ export const makeLineSplitter = () => {
             return;
         }
 
+        currentSpend = currentSpend * getExchangeRate(currentCivHash);
+
         // Обновляем статистику
         totalSpendGalactic += currentSpend;
 
@@ -302,7 +320,7 @@ export const makeLineSplitter = () => {
     };
 
     return new TransformStream({
-        transform(chunk, controller) {
+        async transform(chunk, controller) {
             // Если буфер может переполниться, увеличиваем его размер
             if (bufferOffset + chunk.length > buffer.length) {
                 const newBuffer = Buffer.alloc(buffer.length * 2);
@@ -320,6 +338,13 @@ export const makeLineSplitter = () => {
                 if (buffer[i] === NEW_LINE_CHAR_CODE) {
                     processLine(lineStart, i);
                     lineStart = i + 1;
+
+                    if (rowCount % rows === 0) {
+                        const result = aggregateStats();
+
+                        await setTimeout(100);
+                        controller.enqueue(result);
+                    }
                 }
             }
 
@@ -334,13 +359,15 @@ export const makeLineSplitter = () => {
             }
         },
         flush(controller) {
-            // Обрабатываем оставшиеся данные, если они есть
             if (bufferOffset > 0) {
                 processLine(0, bufferOffset);
             }
 
             const result = aggregateStats();
-            controller.enqueue(JSON.stringify(result));
+
+            return setTimeout(100).then(() => {
+                controller.enqueue(result);
+            });
         },
     });
 };
